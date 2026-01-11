@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>温度模拟器 - 实时温度波形图</title>
     <meta name="description" content="一个显示温度波形图的前端项目，使用模拟数据，通过红黄绿色表示不同的温度警告级别">
-    <link rel="stylesheet" href="app.css">
-    <!-- 引入Chart.js库用于绘制波形图 -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="app.css?v=20260111009">
 </head>
 <body>
     <div class="container">
@@ -51,23 +52,20 @@
             <section class="stats">
                 <div class="stat-card">
                     <h3>当前温度</h3>
-                    <div class="stat-value" id="currentTemp">-- °C</div>
-                    <div class="stat-status" id="currentStatus">--</div>
+                    <div id="currentTemperature" style="
+                        font-size: 32px;
+                        font-weight: bold;
+                        color: #2c3e50;
+                        padding: 10px;
+                        margin: 10px auto;
+                        white-space: nowrap;
+                        display: block;
+                    ">--</div>
+                    <div class="stat-status" id="temperatureStatus">--</div>
                 </div>
                 <div class="stat-card">
-                    <h3>最高温度</h3>
-                    <div class="stat-value" id="maxTemp">-- °C</div>
-                    <div class="stat-time" id="maxTempTime">--</div>
-                </div>
-                <div class="stat-card">
-                    <h3>最低温度</h3>
-                    <div class="stat-value" id="minTemp">-- °C</div>
-                    <div class="stat-time" id="minTempTime">--</div>
-                </div>
-                <div class="stat-card">
-                    <h3>平均温度</h3>
-                    <div class="stat-value" id="avgTemp">-- °C</div>
-                    <div class="stat-trend" id="tempTrend">--</div>
+                    <h3>状态指示器</h3>
+                    <div class="status-indicator normal" id="statusIndicator">正常</div>
                 </div>
             </section>
 
@@ -86,21 +84,11 @@
         </main>
 
         <footer class="footer">
-            <p>温度模拟器 v1.0.0 | 使用模拟数据 | 最后更新: <span id="currentDate"></span></p>
+            <p>温度模拟器 v1.0.0 | 使用模拟数据 | <span id="currentDate"></span></p>
         </footer>
     </div>
 
     <!-- 加载JavaScript文件 -->
-    <script src="app.js"></script>
-    
-    <!-- 页面加载完成后初始化日期 -->
-    <script>
-        // 显示当前日期
-        document.addEventListener('DOMContentLoaded', function() {
-            const now = new Date();
-            const options = { year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN', options);
-        });
-    </script>
+    <script src="app.js?v=20260111019"></script>
 </body>
 </html>

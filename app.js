@@ -10,18 +10,18 @@ const CONFIG = {
     CHART: {
         WIDTH: 800,
         HEIGHT: 400,
-        PADDING: { TOP: 20, RIGHT: 30, BOTTOM: 50, LEFT: 60 },
+        PADDING: { TOP: 20, RIGHT: 80, BOTTOM: 50, LEFT: 60 },
         POINT_RADIUS: 4,
         LINE_WIDTH: 2
     },
     
     // 温度阈值配置
     TEMPERATURE: {
-        MIN: -10,      // 最小温度
+        MIN: 10,       // 最小温度
         MAX: 50,       // 最大温度
-        LOW_WARNING: 0,    // 低温警告阈值
-        HIGH_WARNING: 35,  // 高温警告阈值
-        CRITICAL: 40       // 危险温度阈值
+        SAFE_MAX: 30,      // 安全温度上限
+        WARNING_MAX: 35,   // 警告温度上限
+        DANGER_MIN: 35     // 危险温度下限
     },
     
     // 颜色配置
@@ -39,7 +39,7 @@ const CONFIG = {
     SIMULATION: {
         DATA_POINTS: 50,      // 数据点数量
         UPDATE_INTERVAL: 2000, // 更新间隔(毫秒)
-        TEMP_VARIATION: 5     // 温度波动范围
+        TEMP_VARIATION: 4     // 温度波动范围
     }
 };
 
@@ -56,9 +56,14 @@ function initApp() {
         console.log('正在初始化温度模拟器...');
         
         // 检查必要的DOM元素
-        if (!document.getElementById('temperatureChart')) {
+        const canvas = document.getElementById('temperatureChart');
+        if (!canvas) {
             throw new Error('找不到图表容器元素');
         }
+        
+        // 设置canvas尺寸
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 400;
         
         // 生成初始数据
         generateInitialData();
@@ -66,11 +71,20 @@ function initApp() {
         // 绘制初始图表
         drawChart();
         
+        // 更新温度显示
+        updateTemperatureDisplay();
+        
         // 启动数据更新
         startDataUpdate();
         
         // 添加窗口大小调整监听
         window.addEventListener('resize', handleResize);
+        
+        // 添加按钮事件监听
+        setupEventListeners();
+        
+        // 更新当前日期
+        updateCurrentDate();
         
         console.log('温度模拟器初始化完成');
     } catch (error) {
@@ -80,11 +94,57 @@ function initApp() {
 }
 
 /**
+ * 设置事件监听器
+ */
+function setupEventListeners() {
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            startDataUpdate();
+            console.log('开始模拟');
+        });
+    }
+    
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            stopDataUpdate();
+            console.log('暂停模拟');
+        });
+    }
+    
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            resetSimulation();
+            console.log('重置数据');
+        });
+    }
+}
+
+/**
+ * 更新当前日期显示
+ */
+function updateCurrentDate() {
+    const dateElement = document.getElementById('currentDate');
+    if (dateElement) {
+        const now = new Date();
+        dateElement.textContent = now.toLocaleDateString('zh-CN', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    }
+}
+
+/**
  * 生成初始温度数据
  */
 function generateInitialData() {
     temperatureData = [];
-    let baseTemp = 20;
+    // 随机起始温度，在20-28之间，属于正常范围
+    let baseTemp = 20 + Math.random() * 8;
     
     for (let i = 0; i < CONFIG.SIMULATION.DATA_POINTS; i++) {
         // 模拟温度波动
@@ -107,23 +167,45 @@ function generateInitialData() {
  */
 function updateTemperatureData() {
     try {
-        // 移除最旧的数据点
-        temperatureData.shift();
+        // 生成新温度：在当前温度±10度范围内随机
+        // 如果当前温度>35度，70%概率下降
+        let newTemp;
         
-        // 生成新的温度数据
-        const fluctuation = (Math.random() - 0.5) * CONFIG.SIMULATION.TEMP_VARIATION;
-        const newTemp = currentTemperature + fluctuation;
+        if (currentTemperature > 35) {
+            // 超过35度，70%概率下降，30%概率上升或平稳
+            const rand = Math.random();
+            if (rand < 0.7) {
+                // 下降：当前温度减去0-10度之间的随机值
+                newTemp = currentTemperature - (Math.random() * 10);
+            } else {
+                // 上升或平稳：±5度范围内
+                newTemp = currentTemperature + (Math.random() - 0.5) * 10;
+            }
+        } else {
+            // 正常情况：在±10度范围内随机
+            newTemp = currentTemperature + (Math.random() - 0.5) * 20;
+        }
         
-        // 限制温度在合理范围内
+        // 限制温度在10-50度范围内
         const clampedTemp = Math.max(CONFIG.TEMPERATURE.MIN, 
                                     Math.min(CONFIG.TEMPERATURE.MAX, newTemp));
         
+        // 获取下一个index（保持递增，实现滚动效果）
+        const nextIndex = temperatureData.length > 0 
+            ? temperatureData[temperatureData.length - 1].index + 1 
+            : 0;
+        
         // 添加新数据点
         temperatureData.push({
-            index: temperatureData.length,
+            index: nextIndex,
             temperature: clampedTemp,
             timestamp: new Date()
         });
+        
+        // 移除最旧的数据点（保持固定数量）
+        if (temperatureData.length > CONFIG.SIMULATION.DATA_POINTS) {
+            temperatureData.shift();
+        }
         
         // 更新当前温度
         currentTemperature = clampedTemp;
@@ -145,13 +227,12 @@ function updateTemperatureData() {
  * @returns {string} 颜色代码
  */
 function getTemperatureColor(temperature) {
-    if (temperature >= CONFIG.TEMPERATURE.CRITICAL) {
-        return CONFIG.COLORS.DANGER;
-    } else if (temperature >= CONFIG.TEMPERATURE.HIGH_WARNING || 
-               temperature <= CONFIG.TEMPERATURE.LOW_WARNING) {
-        return CONFIG.COLORS.WARNING;
+    if (temperature > CONFIG.TEMPERATURE.DANGER_MIN) {
+        return CONFIG.COLORS.DANGER;  // 红色：>35°C
+    } else if (temperature >= CONFIG.TEMPERATURE.SAFE_MAX) {
+        return CONFIG.COLORS.WARNING;  // 黄色：30-35°C
     } else {
-        return CONFIG.COLORS.NORMAL;
+        return CONFIG.COLORS.NORMAL;   // 绿色：<30°C
     }
 }
 
@@ -161,12 +242,10 @@ function getTemperatureColor(temperature) {
  * @returns {string} 状态描述
  */
 function getTemperatureStatus(temperature) {
-    if (temperature >= CONFIG.TEMPERATURE.CRITICAL) {
+    if (temperature > CONFIG.TEMPERATURE.DANGER_MIN) {
         return '危险';
-    } else if (temperature >= CONFIG.TEMPERATURE.HIGH_WARNING) {
-        return '高温警告';
-    } else if (temperature <= CONFIG.TEMPERATURE.LOW_WARNING) {
-        return '低温警告';
+    } else if (temperature >= CONFIG.TEMPERATURE.SAFE_MAX) {
+        return '警告';
     } else {
         return '正常';
     }
@@ -279,31 +358,48 @@ function drawAxes(ctx, chartArea) {
     ctx.lineTo(chartArea.x, chartArea.y + chartArea.height);
     ctx.stroke();
     
-    // X轴标签
-    const xLabels = 5;
-    for (let i = 0; i <= xLabels; i++) {
-        const x = chartArea.x + (i / xLabels) * chartArea.width;
-        const labelIndex = Math.floor((i / xLabels) * (temperatureData.length - 1));
+    // X轴标签 - 显示最新的几个时间点
+    const xLabels = Math.min(5, temperatureData.length);
+    const step = Math.max(1, Math.floor(temperatureData.length / xLabels));
+    
+    for (let i = 0; i < temperatureData.length; i += step) {
+        const dataPoint = temperatureData[i];
+        const minIndex = temperatureData[0].index;
+        const maxIndex = temperatureData[temperatureData.length - 1].index;
+        const indexRange = Math.max(maxIndex - minIndex, CONFIG.SIMULATION.DATA_POINTS - 1);
+        const x = chartArea.x + ((dataPoint.index - minIndex) / indexRange) * chartArea.width;
         
-        if (temperatureData[labelIndex]) {
-            const time = temperatureData[labelIndex].timestamp;
-            const label = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
-            
-            ctx.fillText(label, x, chartArea.y + chartArea.height + 10);
-        }
+        const time = dataPoint.timestamp;
+        const label = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}:${time.getSeconds().toString().padStart(2, '0')}`;
+        
+        ctx.fillText(label, x, chartArea.y + chartArea.height + 10);
     }
     
-    // Y轴标签
-    const yLabels = 5;
-    for (let i = 0; i <= yLabels; i++) {
-        const y = chartArea.y + (i / yLabels) * chartArea.height;
-        const temp = CONFIG.TEMPERATURE.MAX - (i / yLabels) * 
-                    (CONFIG.TEMPERATURE.MAX - CONFIG.TEMPERATURE.MIN);
+    // 确保显示最后一个点的时间
+    if (temperatureData.length > 0) {
+        const lastPoint = temperatureData[temperatureData.length - 1];
+        const minIndex = temperatureData[0].index;
+        const maxIndex = temperatureData[temperatureData.length - 1].index;
+        const indexRange = Math.max(maxIndex - minIndex, CONFIG.SIMULATION.DATA_POINTS - 1);
+        const x = chartArea.x + ((lastPoint.index - minIndex) / indexRange) * chartArea.width;
+        
+        const time = lastPoint.timestamp;
+        const label = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}:${time.getSeconds().toString().padStart(2, '0')}`;
+        
+        ctx.fillText(label, x, chartArea.y + chartArea.height + 10);
+    }
+    
+    // Y轴标签 - 固定显示10, 20, 30, 40, 50度
+    const yLabels = [10, 20, 30, 40, 50];
+    yLabels.forEach(temp => {
+        const normalized = (temp - CONFIG.TEMPERATURE.MIN) / 
+                          (CONFIG.TEMPERATURE.MAX - CONFIG.TEMPERATURE.MIN);
+        const y = chartArea.y + chartArea.height - (normalized * chartArea.height);
         
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(`${temp.toFixed(0)}°C`, chartArea.x - 10, y);
-    }
+        ctx.fillText(`${temp}°C`, chartArea.x - 10, y);
+    });
     
     // 坐标轴标题
     ctx.textAlign = 'center';
@@ -330,13 +426,17 @@ function drawTemperatureCurve(ctx, chartArea) {
         return chartArea.y + chartArea.height - (normalized * chartArea.height);
     };
     
-    // 计算索引到X坐标的映射
+    // 计算索引到X坐标的映射（基于实际索引值，实现滚动效果）
+    const minIndex = temperatureData[0].index;
+    const maxIndex = temperatureData[temperatureData.length - 1].index;
+    const indexRange = Math.max(maxIndex - minIndex, CONFIG.SIMULATION.DATA_POINTS - 1);
+    
     const indexToX = (index) => {
-        const normalized = index / (temperatureData.length - 1);
+        const normalized = (index - minIndex) / indexRange;
         return chartArea.x + normalized * chartArea.width;
     };
     
-    // 绘制温度曲线
+    // 绘制温度曲线 - 使用平滑曲线
     ctx.beginPath();
     ctx.lineWidth = CONFIG.CHART.LINE_WIDTH;
     ctx.lineJoin = 'round';
@@ -346,43 +446,58 @@ function drawTemperatureCurve(ctx, chartArea) {
     const firstPoint = temperatureData[0];
     ctx.moveTo(indexToX(firstPoint.index), tempToY(firstPoint.temperature));
     
-    // 绘制线段
+    // 使用二次贝塞尔曲线绘制平滑曲线
     for (let i = 1; i < temperatureData.length; i++) {
         const point = temperatureData[i];
-        ctx.lineTo(indexToX(point.index), tempToY(point.temperature));
+        const prevPoint = temperatureData[i - 1];
+        
+        // 计算控制点（前一个点和当前点的中点）
+        const cpX = (indexToX(prevPoint.index) + indexToX(point.index)) / 2;
+        const cpY = (tempToY(prevPoint.temperature) + tempToY(point.temperature)) / 2;
+        
+        // 使用二次贝塞尔曲线
+        ctx.quadraticCurveTo(
+            indexToX(prevPoint.index), 
+            tempToY(prevPoint.temperature),
+            cpX,
+            cpY
+        );
     }
+    
+    // 绘制到最后一个点
+    const lastPoint = temperatureData[temperatureData.length - 1];
+    ctx.lineTo(indexToX(lastPoint.index), tempToY(lastPoint.temperature));
     
     // 设置曲线颜色为当前温度对应的颜色
     ctx.strokeStyle = getTemperatureColor(currentTemperature);
     ctx.stroke();
     
-    // 绘制数据点
-    for (let i = 0; i < temperatureData.length; i++) {
-        const point = temperatureData[i];
-        const x = indexToX(point.index);
-        const y = tempToY(point.temperature);
-        
-        ctx.beginPath();
-        ctx.arc(x, y, CONFIG.CHART.POINT_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = getTemperatureColor(point.temperature);
-        ctx.fill();
-        
-        // 绘制当前温度点的特殊标记
-        if (i === temperatureData.length - 1) {
-            ctx.beginPath();
-            ctx.arc(x, y, CONFIG.CHART.POINT_RADIUS * 1.5, 0, Math.PI * 2);
-            ctx.strokeStyle = getTemperatureColor(point.temperature);
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            
-            // 显示当前温度值
-            ctx.fillStyle = CONFIG.COLORS.TEXT;
-            ctx.font = 'bold 14px Arial';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(`${point.temperature.toFixed(1)}°C`, x + 10, y - 10);
-        }
-    }
+    // 绘制最后一个点的特殊标记和温度标签
+    const x = indexToX(lastPoint.index);
+    const y = tempToY(lastPoint.temperature);
+    
+    // 绘制当前温度点的特殊标记
+    ctx.beginPath();
+    ctx.arc(x, y, CONFIG.CHART.POINT_RADIUS * 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = getTemperatureColor(lastPoint.temperature);
+    ctx.fill();
+    ctx.strokeStyle = getTemperatureColor(lastPoint.temperature);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    
+    // 显示当前温度值 - 放在图表外侧右边
+    const tempText = `${lastPoint.temperature.toFixed(1)}°C`;
+    ctx.font = 'bold 16px Arial';
+    ctx.fillStyle = CONFIG.COLORS.TEXT;
+    
+    // 将标签放在图表区域的右侧外面
+    const textX = chartArea.x + chartArea.width + 10;
+    const textY = y - 10;
+    
+    // 绘制文字（无背景）
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(tempText, textX, textY);
 }
 
 /**
@@ -391,13 +506,13 @@ function drawTemperatureCurve(ctx, chartArea) {
 function drawLegend(ctx, canvas) {
     const legendX = canvas.width - 200;
     const legendY = 20;
-    const itemHeight = 20;
+    const itemHeight = 25;
     const colorWidth = 20;
     
     const legendItems = [
-        { label: '正常 (0-35°C)', color: CONFIG.COLORS.NORMAL },
-        { label: '警告 (<0°C 或 >35°C)', color: CONFIG.COLORS.WARNING },
-        { label: '危险 (>40°C)', color: CONFIG.COLORS.DANGER }
+        { label: '安全 (<30°C)', color: CONFIG.COLORS.NORMAL },
+        { label: '警告 (30-35°C)', color: CONFIG.COLORS.WARNING },
+        { label: '危险 (>35°C)', color: CONFIG.COLORS.DANGER }
     ];
     
     ctx.font = '12px Arial';
@@ -426,7 +541,10 @@ function updateTemperatureDisplay() {
         const statusElement = document.getElementById('temperatureStatus');
         
         if (tempElement && statusElement) {
-            tempElement.textContent = currentTemperature.toFixed(1);
+            const tempValue = currentTemperature.toFixed(1);
+            console.log('更新温度显示:', tempValue + '°C');
+            // 使用最简单的方式显示
+            tempElement.textContent = tempValue + '°C';
             tempElement.style.color = getTemperatureColor(currentTemperature);
             
             const status = getTemperatureStatus(currentTemperature);
@@ -490,8 +608,12 @@ function stopDataUpdate() {
  * 处理窗口大小调整
  */
 function handleResize() {
-    // 重新绘制图表
-    drawChart();
+    const canvas = document.getElementById('temperatureChart');
+    if (canvas) {
+        canvas.width = canvas.offsetWidth;
+        canvas.height = 400;
+        drawChart();
+    }
 }
 
 /**
@@ -540,18 +662,9 @@ function resetSimulation() {
     }
 }
 
-/**
- * 导出温度数据为CSV
- */
-function exportData() {
-    try {
-        const csvContent = "data:text/csv;charset=utf-8," 
-            + "时间,温度(°C),状态\n"
-            + temperatureData.map(point => {
-                const time = point.timestamp.toLocaleTimeString();
-                const temp = point.temperature.toFixed(2);
-                const status = getTemperatureStatus(point.temperature);
-                return `${time},${temp},${status}`;
-            }).join("\n");
-        
-        const encoded
+// 页面加载完成后初始化应用
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
